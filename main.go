@@ -1,16 +1,20 @@
 package main
 
 import (
+	"database/sql"
 	"log"
 	"os"
 
 	"github.com/MarianGheorghiu/blog_aggregator/internal/config"
+	"github.com/MarianGheorghiu/blog_aggregator/internal/database"
+	_ "github.com/lib/pq"
 )
 
 type state struct {
 	// Aplicăm un wrapper pentru Config pentru a păstra starea programului.
 	// Ar fi bine să includem aici și alți clienți (ex: DB, logger custom, servicii externe)
 	cfg *config.Config
+	db  *database.Queries
 }
 
 func main() {
@@ -20,20 +24,27 @@ func main() {
 		log.Fatalf("error reading config: %v", err)
 	}
 
-	// Instanțiem starea programului. 
-	// ATENȚIE: `cfg` este returnat ca valoare, iar aici facem un pointer spre valoare → nu persistă modificările între reîncărcări
+	// 1. deschidem conexiunea la baza de date
+	db, err := sql.Open("postgres", cfg.DBURL)
+	if err != nil {
+		log.Fatalf("cannot open db: %v", err)
+	}
+	defer db.Close()
+	// 2. creăm instanța Queries din pachetul generat de sqlc
+	dbQueries := database.New(db)
+
 	programState := &state{
+		db:  dbQueries,
 		cfg: &cfg,
 	}
 
-	// Inițializăm mapa de comenzi
 	cmds := commands{
 		registeredCommands: make(map[string]func(*state, command) error),
 	}
-	// Înregistrăm prima comandă disponibilă ("login").
 	cmds.register("login", handlerLogin)
+	cmds.register("register", handlerRegister)
+	cmds.register("reset", handleReset)
 
-	// Validăm că userul a introdus cel puțin o comandă.
 	if len(os.Args) < 2 {
 		log.Fatal("Usage: cli <command> [args...]")
 	}
@@ -41,7 +52,6 @@ func main() {
 	cmdName := os.Args[1]
 	cmdArgs := os.Args[2:]
 
-	// Rulăm comanda
 	err = cmds.run(programState, command{Name: cmdName, Args: cmdArgs})
 	if err != nil {
 		log.Fatal(err)
