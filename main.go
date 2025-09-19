@@ -1,32 +1,40 @@
 package main
 
 import (
-	"fmt"
 	"log"
+	"os"
 
 	"github.com/MarianGheorghiu/blog_aggregator/internal/config"
 )
 
+type state struct {
+	cfg *config.Config
+}
+
 func main() {
-	// Citește fișierul de config
 	cfg, err := config.Read()
 	if err != nil {
-		log.Fatalf("Error reading: %v", err)
+		log.Fatalf("error reading config: %v", err)
 	}
-	fmt.Printf("Read config: %+v\n", cfg)
 
-	// Setează user-ul
-	err = cfg.SetUser("marian")
+	programState := &state{
+		cfg: &cfg,
+	}
+
+	cmds := commands{
+		registeredCommands: make(map[string]func(*state, command) error),
+	}
+	cmds.register("login", handlerLogin)
+
+	if len(os.Args) < 2 {
+		log.Fatal("Usage: cli <command> [args...]")
+	}
+
+	cmdName := os.Args[1]
+	cmdArgs := os.Args[2:]
+
+	err = cmds.run(programState, command{Name: cmdName, Args: cmdArgs})
 	if err != nil {
-		log.Fatalf("Error writing: %v", err)
+		log.Fatal(err)
 	}
-
-	// Citește din nou config-ul pentru a verifica modificarea
-	cfg, err = config.Read()
-	if err != nil {
-		log.Fatalf("Error reading: %v", err)
-	}
-
-	// Afișează structura Config în terminal
-	fmt.Printf("Final Config: %+v\n", cfg)
 }
